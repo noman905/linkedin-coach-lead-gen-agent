@@ -57,13 +57,16 @@ The agent runs automatically every day at **6:00 PM Pakistan Time (1:00 PM UTC)*
 
 ### Step 1: Add GitHub Repository Secrets
 1. Go to your GitHub Repository -> **Settings** -> **Secrets and variables** -> **Actions**.
-2. Click **New repository secret** and add the following 3 secrets:
+2. Click **New repository secret** and add the following secrets:
 
 | Secret Name | Description | Value Example |
 | :--- | :--- | :--- |
 | `APIFY_API_TOKEN` | Your Apify Personal API Token | `apify_api_...` |
 | `GOOGLE_SHEETS_CREDENTIALS` | The **entire contents** of your Google Service Account JSON file | `{"type": "service_account", "project_id": "...", ...}` |
 | `SPREADSHEET_ID` | The ID from your Google Sheet URL | `your_spreadsheet_id_here` |
+| `NOTIFY_EMAIL_ADDRESS` | *(Optional)* Gmail address to send notification emails FROM | `your_email@gmail.com` |
+| `NOTIFY_EMAIL_PASSWORD` | *(Optional)* 16-character Gmail App Password | `abcd efgh ijkl mnop` |
+| `NOTIFY_EMAIL_TO` | *(Optional)* Email address to receive run reports | `recipient@gmail.com` |
 
 > **Note**: Share your Google Sheet with the `client_email` found in your service account JSON file (with **Editor** permissions).
 

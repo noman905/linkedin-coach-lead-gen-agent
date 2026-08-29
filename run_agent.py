@@ -39,6 +39,9 @@ logging.basicConfig(
 logger = logging.getLogger("LinkedInAgent")
 
 
+from email_notifier import EmailNotifier
+
+
 class LinkedInPipelineRunner:
     """Master orchestrator for executing the 5-phase lead generation pipeline."""
 
@@ -53,6 +56,27 @@ class LinkedInPipelineRunner:
             qualifier=self.phase4_qualifier,
         )
         self.sheets_writer = LinkedInSheetsWriter()
+        self.email_notifier = EmailNotifier()
+
+    def get_remaining_apify_credits(self) -> Optional[float]:
+        """Queries remaining Apify credits for the current billing cycle if available."""
+        try:
+            client = self.apify_wrapper.get_client()
+            user_info = client.user("me").get()
+            monthly_credits = 5.0
+            if user_info and hasattr(user_info, "plan") and user_info.plan:
+                monthly_credits = getattr(user_info.plan, "monthly_usage_credits_usd", 5.0) or 5.0
+
+            usage_info = client.user("me").monthly_usage()
+            used_credits = 0.0
+            if usage_info:
+                used_credits = getattr(usage_info, "total_usage_credits_usd_after_volume_discount", 0.0) or 0.0
+
+            remaining = max(0.0, monthly_credits - used_credits)
+            return round(remaining, 2)
+        except Exception as e:
+            logger.debug(f"Could not retrieve remaining Apify credits: {e}")
+            return None
 
     def calculate_estimated_cost(
         self,
@@ -97,12 +121,26 @@ class LinkedInPipelineRunner:
             logger.error("Apify credits exhausted during Phase 1.")
             if row_index:
                 self.sheets_writer.update_control_row(row_index, "Failed (Credits Out)", "Apify credits exhausted")
+            self.email_notifier.send_job_notification(
+                niche=niche,
+                city=city,
+                status="Failed",
+                failed_phase="Phase 1 (Google Search)",
+                error_message="Apify credits exhausted.",
+            )
             raise
         except Exception as e:
             err_msg = f"Phase 1 error: {e}"
             logger.error(err_msg)
             if row_index:
                 self.sheets_writer.update_control_row(row_index, "Failed", f"Google search error: {e}")
+            self.email_notifier.send_job_notification(
+                niche=niche,
+                city=city,
+                status="Failed",
+                failed_phase="Phase 1 (Google Search)",
+                error_message=str(e),
+            )
             return False
 
         if not discovered_leads:
@@ -110,6 +148,13 @@ class LinkedInPipelineRunner:
             logger.warning(msg)
             if row_index:
                 self.sheets_writer.update_control_row(row_index, "Failed", msg)
+            self.email_notifier.send_job_notification(
+                niche=niche,
+                city=city,
+                status="Failed",
+                failed_phase="Phase 1 (Google Search)",
+                error_message=msg,
+            )
             return False
 
         # -------------------------------------------------------------
@@ -123,6 +168,15 @@ class LinkedInPipelineRunner:
             logger.warning(msg)
             if row_index:
                 self.sheets_writer.update_control_row(row_index, "Failed", msg)
+            self.email_notifier.send_job_notification(
+                niche=niche,
+                city=city,
+                status="Failed",
+                phase1_found=len(discovered_leads),
+                phase2_removed=p2_stats.total_input,
+                failed_phase="Phase 2 (Pre-Filter)",
+                error_message=msg,
+            )
             return False
 
         # -------------------------------------------------------------
@@ -135,12 +189,32 @@ class LinkedInPipelineRunner:
             logger.error("Apify credits exhausted during Phase 3.")
             if row_index:
                 self.sheets_writer.update_control_row(row_index, "Failed (Credits Out)", "Apify credits exhausted")
+            self.email_notifier.send_job_notification(
+                niche=niche,
+                city=city,
+                status="Failed",
+                phase1_found=len(discovered_leads),
+                phase2_removed=p2_stats.total_input - p2_stats.total_passed,
+                phase2_remaining=p2_stats.total_passed,
+                failed_phase="Phase 3 (Posts Activity Check)",
+                error_message="Apify credits exhausted.",
+            )
             raise
         except Exception as e:
             err_msg = f"Phase 3 error: {e}"
             logger.error(err_msg)
             if row_index:
                 self.sheets_writer.update_control_row(row_index, "Failed", f"Posts activity error: {e}")
+            self.email_notifier.send_job_notification(
+                niche=niche,
+                city=city,
+                status="Failed",
+                phase1_found=len(discovered_leads),
+                phase2_removed=p2_stats.total_input - p2_stats.total_passed,
+                phase2_remaining=p2_stats.total_passed,
+                failed_phase="Phase 3 (Posts Activity Check)",
+                error_message=str(e),
+            )
             return False
 
         if not active_leads:
@@ -148,6 +222,17 @@ class LinkedInPipelineRunner:
             logger.warning(msg)
             if row_index:
                 self.sheets_writer.update_control_row(row_index, "Failed", msg)
+            self.email_notifier.send_job_notification(
+                niche=niche,
+                city=city,
+                status="Failed",
+                phase1_found=len(discovered_leads),
+                phase2_removed=p2_stats.total_input - p2_stats.total_passed,
+                phase2_remaining=p2_stats.total_passed,
+                phase3_inactive_removed=len(filtered_urls),
+                failed_phase="Phase 3 (Posts Activity Check)",
+                error_message=msg,
+            )
             return False
 
         # -------------------------------------------------------------
@@ -160,12 +245,36 @@ class LinkedInPipelineRunner:
             logger.error("Apify credits exhausted during Phase 4.")
             if row_index:
                 self.sheets_writer.update_control_row(row_index, "Failed (Credits Out)", "Apify credits exhausted")
+            self.email_notifier.send_job_notification(
+                niche=niche,
+                city=city,
+                status="Failed",
+                phase1_found=len(discovered_leads),
+                phase2_removed=p2_stats.total_input - p2_stats.total_passed,
+                phase2_remaining=p2_stats.total_passed,
+                phase3_inactive_removed=len(filtered_urls) - len(active_leads),
+                phase3_remaining=len(active_leads),
+                failed_phase="Phase 4 (Profile Scraper)",
+                error_message="Apify credits exhausted.",
+            )
             raise
         except Exception as e:
             err_msg = f"Phase 4 error: {e}"
             logger.error(err_msg)
             if row_index:
                 self.sheets_writer.update_control_row(row_index, "Failed", f"Profile scraper error: {e}")
+            self.email_notifier.send_job_notification(
+                niche=niche,
+                city=city,
+                status="Failed",
+                phase1_found=len(discovered_leads),
+                phase2_removed=p2_stats.total_input - p2_stats.total_passed,
+                phase2_remaining=p2_stats.total_passed,
+                phase3_inactive_removed=len(filtered_urls) - len(active_leads),
+                phase3_remaining=len(active_leads),
+                failed_phase="Phase 4 (Profile Scraper)",
+                error_message=str(e),
+            )
             return False
 
         if not qualified_leads:
@@ -173,6 +282,19 @@ class LinkedInPipelineRunner:
             logger.warning(msg)
             if row_index:
                 self.sheets_writer.update_control_row(row_index, "Failed", msg)
+            self.email_notifier.send_job_notification(
+                niche=niche,
+                city=city,
+                status="Failed",
+                phase1_found=len(discovered_leads),
+                phase2_removed=p2_stats.total_input - p2_stats.total_passed,
+                phase2_remaining=p2_stats.total_passed,
+                phase3_inactive_removed=len(filtered_urls) - len(active_leads),
+                phase3_remaining=len(active_leads),
+                phase4_unqualified_removed=p4_stats.total_input,
+                failed_phase="Phase 4 (Profile Qualifier)",
+                error_message=msg,
+            )
             return False
 
         # -------------------------------------------------------------
@@ -186,14 +308,29 @@ class LinkedInPipelineRunner:
             logger.error(err_msg)
             if row_index:
                 self.sheets_writer.update_control_row(row_index, "Failed", f"Sheets write error: {e}")
+            self.email_notifier.send_job_notification(
+                niche=niche,
+                city=city,
+                status="Failed",
+                phase1_found=len(discovered_leads),
+                phase2_removed=p2_stats.total_input - p2_stats.total_passed,
+                phase2_remaining=p2_stats.total_passed,
+                phase3_inactive_removed=len(filtered_urls) - len(active_leads),
+                phase3_remaining=len(active_leads),
+                phase4_unqualified_removed=p4_stats.total_input - p4_stats.total_qualified,
+                phase4_qualified=p4_stats.total_qualified,
+                failed_phase="Phase 5 (Sheets Writer)",
+                error_message=str(e),
+            )
             return False
 
-        # Calculate estimated credits used
+        # Calculate estimated credits used & check remaining
         estimated_cost = self.calculate_estimated_cost(
             phase1_pages=pages,
             phase3_profiles_checked=len(filtered_urls),
             phase4_profiles_scraped=len(active_leads),
         )
+        remaining_credits = self.get_remaining_apify_credits()
 
         # Build final summary notes
         if new_saved == 0 and duplicates_skipped > 0:
@@ -218,6 +355,24 @@ class LinkedInPipelineRunner:
         logger.info(f"  Credits used this run:    approximately ${estimated_cost:.2f}")
         logger.info(f"  Control Tab row:          {status_result}")
         logger.info(f"{'-'*60}\n")
+
+        # Send email notification
+        self.email_notifier.send_job_notification(
+            niche=niche,
+            city=city,
+            status=status_result,
+            phase1_found=len(discovered_leads),
+            phase2_removed=p2_stats.total_input - p2_stats.total_passed,
+            phase2_remaining=p2_stats.total_passed,
+            phase3_inactive_removed=len(filtered_urls) - len(active_leads),
+            phase3_remaining=len(active_leads),
+            phase4_unqualified_removed=p4_stats.total_input - p4_stats.total_qualified,
+            phase4_qualified=p4_stats.total_qualified,
+            new_leads_saved=new_saved,
+            duplicates_skipped=duplicates_skipped,
+            estimated_credits_usd=estimated_cost,
+            remaining_credits_usd=remaining_credits,
+        )
 
         return True
 
