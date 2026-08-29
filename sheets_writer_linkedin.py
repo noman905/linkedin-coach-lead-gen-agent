@@ -43,6 +43,29 @@ LEADS_HEADERS = [
     "Date Added",
     "Status",
 ]
+RUN_LOG_HEADERS = [
+    "Timestamp (UTC)",
+    "Niche",
+    "City",
+    "Pages",
+    "Phase 1 Found",
+    "Phase 2 Passed",
+    "Phase 3 Active",
+    "Phase 4 Qualified",
+    "New Leads Saved",
+    "Duplicates Skipped",
+    "Status",
+    "Notes / Summary",
+    "Estimated Cost ($)",
+]
+ERROR_LOG_HEADERS = [
+    "Timestamp (UTC)",
+    "Niche",
+    "City",
+    "Failed Phase",
+    "Error Message / Reason",
+    "Details / Exception",
+]
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -59,6 +82,8 @@ class LinkedInSheetsWriter:
         spreadsheet_id: Optional[str] = None,
         control_tab_name: Optional[str] = None,
         leads_tab_name: Optional[str] = None,
+        run_log_tab_name: Optional[str] = None,
+        error_log_tab_name: Optional[str] = None,
     ):
         self.service_account_source = (
             service_account_file
@@ -72,6 +97,8 @@ class LinkedInSheetsWriter:
         )
         self.control_tab_name = control_tab_name or os.getenv("CONTROL_TAB_NAME", "Control")
         self.leads_tab_name = leads_tab_name or os.getenv("LEADS_TAB_NAME", "Leads")
+        self.run_log_tab_name = run_log_tab_name or os.getenv("RUN_LOG_TAB_NAME", "Run Log")
+        self.error_log_tab_name = error_log_tab_name or os.getenv("ERROR_LOG_TAB_NAME", "Error Log")
 
         self.gc: Optional[gspread.Client] = None
         self.sh: Optional[gspread.Spreadsheet] = None
@@ -132,9 +159,11 @@ class LinkedInSheetsWriter:
         return ws
 
     def initialize_sheets(self) -> None:
-        """Initializes both Control and Leads worksheets with standard headers."""
+        """Initializes Control, Leads, Run Log, and Error Log worksheets with standard headers."""
         self._get_or_create_worksheet(self.control_tab_name, CONTROL_HEADERS)
         self._get_or_create_worksheet(self.leads_tab_name, LEADS_HEADERS)
+        self._get_or_create_worksheet(self.run_log_tab_name, RUN_LOG_HEADERS)
+        self._get_or_create_worksheet(self.error_log_tab_name, ERROR_LOG_HEADERS)
         logger.info("Worksheets initialized successfully.")
 
     def get_existing_lead_urls(self, force_refresh: bool = False) -> Set[str]:
@@ -302,6 +331,77 @@ class LinkedInSheetsWriter:
             logger.info(f"Updated Control row {row_index}: Status='{status}', Notes='{notes}'")
         except Exception as e:
             logger.error(f"Failed to update Control row {row_index}: {e}")
+
+    def log_run(
+        self,
+        niche: str,
+        city: str,
+        pages: int,
+        phase1_found: int = 0,
+        phase2_passed: int = 0,
+        phase3_active: int = 0,
+        phase4_qualified: int = 0,
+        new_leads_saved: int = 0,
+        duplicates_skipped: int = 0,
+        status: str = "Done",
+        notes: str = "",
+        estimated_cost: float = 0.0,
+        timestamp_str: Optional[str] = None,
+    ) -> None:
+        """
+        Appends a summary row to the Run Log tab for tracking funnel drop-offs and costs.
+        """
+        try:
+            ws = self._get_or_create_worksheet(self.run_log_tab_name, RUN_LOG_HEADERS)
+            ts = timestamp_str or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            cost_str = f"${estimated_cost:.4f}" if estimated_cost > 0 else "$0.0000"
+            row_data = [
+                ts,
+                niche,
+                city,
+                pages,
+                phase1_found,
+                phase2_passed,
+                phase3_active,
+                phase4_qualified,
+                new_leads_saved,
+                duplicates_skipped,
+                status,
+                notes,
+                cost_str,
+            ]
+            ws.append_row(row_data, value_input_option="USER_ENTERED")
+            logger.info(f"Logged run to '{self.run_log_tab_name}': {niche} in {city} [{status}]")
+        except Exception as e:
+            logger.error(f"Failed to log run to '{self.run_log_tab_name}': {e}")
+
+    def log_error(
+        self,
+        niche: str,
+        city: str,
+        failed_phase: str,
+        error_message: str,
+        details: str = "",
+        timestamp_str: Optional[str] = None,
+    ) -> None:
+        """
+        Appends an error diagnostics row to the Error Log tab.
+        """
+        try:
+            ws = self._get_or_create_worksheet(self.error_log_tab_name, ERROR_LOG_HEADERS)
+            ts = timestamp_str or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            row_data = [
+                ts,
+                niche,
+                city,
+                failed_phase,
+                error_message,
+                details,
+            ]
+            ws.append_row(row_data, value_input_option="USER_ENTERED")
+            logger.info(f"Logged error to '{self.error_log_tab_name}': {niche} in {city} [{failed_phase}]")
+        except Exception as e:
+            logger.error(f"Failed to log error to '{self.error_log_tab_name}': {e}")
 
 
 if __name__ == "__main__":

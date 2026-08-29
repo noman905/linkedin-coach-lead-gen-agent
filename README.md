@@ -28,7 +28,7 @@ The agent replaces rate-limited LinkedIn search with a **5-Phase hierarchical fu
 
 ## Google Sheets Setup
 
-Your Google Sheet needs two tabs:
+The agent automatically manages **4 tabs** in your Google Spreadsheet:
 
 ### 1. `Control` Tab
 This drives the agent's work queue dynamically (no hardcoded cities or niches):
@@ -44,10 +44,19 @@ This drives the agent's work queue dynamically (no hardcoded cities or niches):
 - **City**: City or State name (use state names for smaller states like Wyoming, Alaska, Montana).
 - **Pages**: Total Google search pages to divide across query variations (e.g. 10 for mega cities, 8 for large, 5 for medium, 3 for small states).
 - **Status**: Set to `Pending` for jobs to run. The agent updates this to `Done` or `Failed`.
+- **Notes**: Summary of leads added or failure reason.
 
 ### 2. `Leads` Tab
 The agent writes verified leads across these columns:
 `LinkedIn URL` | `First Name` | `Last Name` | `Headline` | `Follower Count` | `Location City` | `Location State` | `Location Country` | `Current Company` | `Last Post Date` | `Date Added` | `Status`
+
+### 3. `Run Log` Tab
+A permanent historical log appended on every single pipeline run:
+`Timestamp (UTC)` | `Niche` | `City` | `Pages` | `Phase 1 Found` | `Phase 2 Passed` | `Phase 3 Active` | `Phase 4 Qualified` | `New Leads Saved` | `Duplicates Skipped` | `Status` | `Notes / Summary` | `Estimated Cost ($)`
+
+### 4. `Error Log` Tab
+An error diagnostics tab populated whenever a run encounters an error, filtering drop-out, or credit exhaustion:
+`Timestamp (UTC)` | `Niche` | `City` | `Failed Phase` | `Error Message / Reason` | `Details / Exception`
 
 ---
 

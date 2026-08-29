@@ -58,7 +58,9 @@ A 5-phase lead generation pipeline that replaces single-actor LinkedIn search wi
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │ Phase 5: Save to Google Sheets                                                  │
 │ • Checks existing LinkedIn URLs in Leads tab to prevent duplicates              │
-│ • Writes new leads to target columns                                            │
+│ • Writes new leads to Leads tab with 12 metadata columns                        │
+│ • Appends full run metrics & drop-offs to Run Log tab                           │
+│ • Logs diagnostics & failure reasons to Error Log tab                           │
 │ • Updates Control Tab row: Status = Done (or Failed) + Summary Notes            │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -73,11 +75,12 @@ A 5-phase lead generation pipeline that replaces single-actor LinkedIn search wi
 
 ---
 
-## Google Sheets Control Tab Structure
+## Google Sheets Structure
 
-The agent does not use hardcoded cities or niches. Everything is read dynamically from the Google Sheets Control Tab at runtime.
+The agent integrates with 4 worksheets within the target Google Spreadsheet:
 
-### Columns
+### 1. `Control` Tab
+Drives the dynamic work queue:
 | Column | Description | Example |
 | :--- | :--- | :--- |
 | **Niche** | Target niche / keyword | `Executive Coach` |
@@ -86,12 +89,24 @@ The agent does not use hardcoded cities or niches. Everything is read dynamicall
 | **Status** | Processing status | `Pending`, `Done`, `Failed` |
 | **Notes** | Summary log or error message | `12 leads added. Credits: ~$0.18` |
 
+### 2. `Leads` Tab
+Stores enriched, verified leads with deduplication:
+`LinkedIn URL` | `First Name` | `Last Name` | `Headline` | `Follower Count` | `Location City` | `Location State` | `Location Country` | `Current Company` | `Last Post Date` | `Date Added` | `Status`
+
+### 3. `Run Log` Tab
+Historical tracking log appended on every single pipeline execution:
+`Timestamp (UTC)` | `Niche` | `City` | `Pages` | `Phase 1 Found` | `Phase 2 Passed` | `Phase 3 Active` | `Phase 4 Qualified` | `New Leads Saved` | `Duplicates Skipped` | `Status` | `Notes / Summary` | `Estimated Cost ($)`
+
+### 4. `Error Log` Tab
+Detailed error and filter drop-out diagnostics log:
+`Timestamp (UTC)` | `Niche` | `City` | `Failed Phase` | `Error Message / Reason` | `Details / Exception`
+
 ### Control Tab Processing Rules
 1. Agent reads all rows where `Status == "Pending"`.
 2. Processes rows sequentially from top to bottom.
 3. If no pending rows exist, exits cleanly with `"No pending jobs found"`.
-4. If a row succeeds, sets `Status = Done` and writes run statistics into `Notes`.
-5. If a row fails, sets `Status = Failed` with the error reason in `Notes` and continues to the next row.
+4. If a row succeeds, sets `Status = Done`, writes summary into `Notes`, and logs to `Run Log`.
+5. If a row fails, sets `Status = Failed`, writes failure reason into `Notes`, and logs to both `Run Log` and `Error Log`.
 
 ---
 

@@ -103,8 +103,15 @@ class LinkedInPipelineRunner:
         err_msg = str(e).lower()
         return "by launching this job you will exceed your remaining usage" in err_msg or "exceed your remaining usage" in err_msg
 
-    def _handle_credit_exhaustion(self, row_index: Optional[int], niche: str, city: str, phase_name: str) -> None:
-        """Handles credit exhaustion by updating the sheet, sending ONE email alert, and raising exception."""
+    def _handle_credit_exhaustion(
+        self,
+        row_index: Optional[int],
+        niche: str,
+        city: str,
+        phase_name: str,
+        pages: int = 0,
+    ) -> None:
+        """Handles credit exhaustion by updating the sheet, logging error/run, sending ONE email alert, and raising exception."""
         remaining_credits = self.get_remaining_apify_credits() or 0.0
         status_val = "Failed — Credits Exhausted"
         notes_val = f"Apify credits too low to run. Remaining credit: ${remaining_credits:.2f}. Refills on 1st of next month."
@@ -116,6 +123,22 @@ class LinkedInPipelineRunner:
                 self.sheets_writer.update_control_row(row_index, status_val, notes_val)
             except Exception as se:
                 logger.error(f"Failed to update Control row for credit exhaustion: {se}")
+
+        # Log to Error Log & Run Log
+        self.sheets_writer.log_error(
+            niche=niche,
+            city=city,
+            failed_phase=phase_name,
+            error_message=status_val,
+            details=notes_val,
+        )
+        self.sheets_writer.log_run(
+            niche=niche,
+            city=city,
+            pages=pages,
+            status=status_val,
+            notes=notes_val,
+        )
 
         self.email_notifier.send_job_notification(
             niche=niche,
@@ -151,12 +174,26 @@ class LinkedInPipelineRunner:
             )
         except Exception as e:
             if self._is_credit_exhaustion(e):
-                self._handle_credit_exhaustion(row_index, niche, city, "Phase 1 (Google Search)")
+                self._handle_credit_exhaustion(row_index, niche, city, "Phase 1 (Google Search)", pages=pages)
             
             err_msg = f"Phase 1 error: {e}"
             logger.error(err_msg)
             if row_index:
                 self.sheets_writer.update_control_row(row_index, "Failed", f"Google search error: {e}")
+            self.sheets_writer.log_error(
+                niche=niche,
+                city=city,
+                failed_phase="Phase 1 (Google Search)",
+                error_message="Google search error",
+                details=str(e),
+            )
+            self.sheets_writer.log_run(
+                niche=niche,
+                city=city,
+                pages=pages,
+                status="Failed",
+                notes=f"Google search error: {e}",
+            )
             self.email_notifier.send_job_notification(
                 niche=niche,
                 city=city,
@@ -171,6 +208,21 @@ class LinkedInPipelineRunner:
             logger.warning(msg)
             if row_index:
                 self.sheets_writer.update_control_row(row_index, "Failed", msg)
+            self.sheets_writer.log_error(
+                niche=niche,
+                city=city,
+                failed_phase="Phase 1 (Google Search)",
+                error_message=msg,
+                details="Google search returned 0 profile URLs for queries.",
+            )
+            self.sheets_writer.log_run(
+                niche=niche,
+                city=city,
+                pages=pages,
+                phase1_found=0,
+                status="Failed",
+                notes=msg,
+            )
             self.email_notifier.send_job_notification(
                 niche=niche,
                 city=city,
@@ -191,6 +243,22 @@ class LinkedInPipelineRunner:
             logger.warning(msg)
             if row_index:
                 self.sheets_writer.update_control_row(row_index, "Failed", msg)
+            self.sheets_writer.log_error(
+                niche=niche,
+                city=city,
+                failed_phase="Phase 2 (Pre-Filter)",
+                error_message=msg,
+                details=f"All {p2_stats.total_input} candidates filtered out locally (female name, targets women, org, low followers).",
+            )
+            self.sheets_writer.log_run(
+                niche=niche,
+                city=city,
+                pages=pages,
+                phase1_found=len(discovered_leads),
+                phase2_passed=0,
+                status="Failed",
+                notes=msg,
+            )
             self.email_notifier.send_job_notification(
                 niche=niche,
                 city=city,
@@ -210,12 +278,29 @@ class LinkedInPipelineRunner:
             active_leads = self.phase3_posts_checker.check_activity(filtered_urls)
         except Exception as e:
             if self._is_credit_exhaustion(e):
-                self._handle_credit_exhaustion(row_index, niche, city, "Phase 3 (Posts Activity Check)")
+                self._handle_credit_exhaustion(row_index, niche, city, "Phase 3 (Posts Activity Check)", pages=pages)
 
             err_msg = f"Phase 3 error: {e}"
             logger.error(err_msg)
             if row_index:
                 self.sheets_writer.update_control_row(row_index, "Failed", f"Posts activity error: {e}")
+            self.sheets_writer.log_error(
+                niche=niche,
+                city=city,
+                failed_phase="Phase 3 (Posts Activity Check)",
+                error_message="Posts activity check error",
+                details=str(e),
+            )
+            self.sheets_writer.log_run(
+                niche=niche,
+                city=city,
+                pages=pages,
+                phase1_found=len(discovered_leads),
+                phase2_passed=p2_stats.total_passed,
+                status="Failed",
+                notes=f"Posts activity error: {e}",
+                estimated_cost=self.calculate_estimated_cost(pages, 0, 0),
+            )
             self.email_notifier.send_job_notification(
                 niche=niche,
                 city=city,
@@ -233,6 +318,24 @@ class LinkedInPipelineRunner:
             logger.warning(msg)
             if row_index:
                 self.sheets_writer.update_control_row(row_index, "Failed", msg)
+            self.sheets_writer.log_error(
+                niche=niche,
+                city=city,
+                failed_phase="Phase 3 (Posts Activity Check)",
+                error_message=msg,
+                details=f"Checked {len(filtered_urls)} profiles; 0 had posted on LinkedIn within the last 14 days.",
+            )
+            self.sheets_writer.log_run(
+                niche=niche,
+                city=city,
+                pages=pages,
+                phase1_found=len(discovered_leads),
+                phase2_passed=p2_stats.total_passed,
+                phase3_active=0,
+                status="Failed",
+                notes=msg,
+                estimated_cost=self.calculate_estimated_cost(pages, len(filtered_urls), 0),
+            )
             self.email_notifier.send_job_notification(
                 niche=niche,
                 city=city,
@@ -254,12 +357,30 @@ class LinkedInPipelineRunner:
             qualified_leads, p4_stats = self.phase4_profile_scraper.scrape_and_qualify(active_leads)
         except Exception as e:
             if self._is_credit_exhaustion(e):
-                self._handle_credit_exhaustion(row_index, niche, city, "Phase 4 (Profile Scraper)")
+                self._handle_credit_exhaustion(row_index, niche, city, "Phase 4 (Profile Scraper)", pages=pages)
 
             err_msg = f"Phase 4 error: {e}"
             logger.error(err_msg)
             if row_index:
                 self.sheets_writer.update_control_row(row_index, "Failed", f"Profile scraper error: {e}")
+            self.sheets_writer.log_error(
+                niche=niche,
+                city=city,
+                failed_phase="Phase 4 (Profile Scraper)",
+                error_message="Profile scraper error",
+                details=str(e),
+            )
+            self.sheets_writer.log_run(
+                niche=niche,
+                city=city,
+                pages=pages,
+                phase1_found=len(discovered_leads),
+                phase2_passed=p2_stats.total_passed,
+                phase3_active=len(active_leads),
+                status="Failed",
+                notes=f"Profile scraper error: {e}",
+                estimated_cost=self.calculate_estimated_cost(pages, len(filtered_urls), 0),
+            )
             self.email_notifier.send_job_notification(
                 niche=niche,
                 city=city,
@@ -279,6 +400,25 @@ class LinkedInPipelineRunner:
             logger.warning(msg)
             if row_index:
                 self.sheets_writer.update_control_row(row_index, "Failed", msg)
+            self.sheets_writer.log_error(
+                niche=niche,
+                city=city,
+                failed_phase="Phase 4 (Profile Qualifier)",
+                error_message=msg,
+                details=f"{p4_stats.total_input} active profile(s) checked, none satisfied full qualification rules (followers, gender, client service, or openToWork).",
+            )
+            self.sheets_writer.log_run(
+                niche=niche,
+                city=city,
+                pages=pages,
+                phase1_found=len(discovered_leads),
+                phase2_passed=p2_stats.total_passed,
+                phase3_active=len(active_leads),
+                phase4_qualified=0,
+                status="Failed",
+                notes=msg,
+                estimated_cost=self.calculate_estimated_cost(pages, len(filtered_urls), len(active_leads)),
+            )
             self.email_notifier.send_job_notification(
                 niche=niche,
                 city=city,
@@ -305,6 +445,25 @@ class LinkedInPipelineRunner:
             logger.error(err_msg)
             if row_index:
                 self.sheets_writer.update_control_row(row_index, "Failed", f"Sheets write error: {e}")
+            self.sheets_writer.log_error(
+                niche=niche,
+                city=city,
+                failed_phase="Phase 5 (Sheets Writer)",
+                error_message="Sheets write error",
+                details=str(e),
+            )
+            self.sheets_writer.log_run(
+                niche=niche,
+                city=city,
+                pages=pages,
+                phase1_found=len(discovered_leads),
+                phase2_passed=p2_stats.total_passed,
+                phase3_active=len(active_leads),
+                phase4_qualified=p4_stats.total_qualified,
+                status="Failed",
+                notes=f"Sheets write error: {e}",
+                estimated_cost=self.calculate_estimated_cost(pages, len(filtered_urls), len(active_leads)),
+            )
             self.email_notifier.send_job_notification(
                 niche=niche,
                 city=city,
@@ -340,6 +499,22 @@ class LinkedInPipelineRunner:
 
         if row_index:
             self.sheets_writer.update_control_row(row_index, status_result, summary_notes)
+
+        # Log successful run to Run Log tab
+        self.sheets_writer.log_run(
+            niche=niche,
+            city=city,
+            pages=pages,
+            phase1_found=len(discovered_leads),
+            phase2_passed=p2_stats.total_passed,
+            phase3_active=len(active_leads),
+            phase4_qualified=p4_stats.total_qualified,
+            new_leads_saved=new_saved,
+            duplicates_skipped=duplicates_skipped,
+            status=status_result,
+            notes=summary_notes,
+            estimated_cost=estimated_cost,
+        )
 
         # Log complete pipeline run summary
         logger.info(f"\n{'-'*60}")
@@ -397,6 +572,13 @@ class LinkedInPipelineRunner:
                 break  # Immediately stop processing all remaining rows
             except Exception as e:
                 logger.error(f"Unexpected error processing job {job}: {e}")
+                self.sheets_writer.log_error(
+                    niche=job.get("niche", ""),
+                    city=job.get("city", ""),
+                    failed_phase="General / Pipeline Loop",
+                    error_message="Unexpected error processing job",
+                    details=str(e),
+                )
                 # Continue with next job for regular non-credit errors
 
         logger.info("Pipeline execution cycle completed.")

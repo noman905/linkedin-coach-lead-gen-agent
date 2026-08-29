@@ -113,6 +113,74 @@ class TestPhase5SheetsWriter(unittest.TestCase):
         mock_ws.update.assert_any_call(range_name="D2", values=[["Done"]])
         mock_ws.update.assert_any_call(range_name="E2", values=[["12 new leads added"]])
 
+    def test_initialize_sheets_all_four_tabs(self):
+        self.writer._get_or_create_worksheet = MagicMock()
+        self.writer.initialize_sheets()
+
+        # Should initialize Control, Leads, Run Log, Error Log
+        self.assertEqual(self.writer._get_or_create_worksheet.call_count, 4)
+        calls = [c[0][0] for c in self.writer._get_or_create_worksheet.call_args_list]
+        self.assertIn("Control", calls)
+        self.assertIn("Leads", calls)
+        self.assertIn("Run Log", calls)
+        self.assertIn("Error Log", calls)
+
+    def test_log_run(self):
+        mock_ws = MagicMock()
+        self.writer._get_or_create_worksheet = MagicMock(return_value=mock_ws)
+
+        self.writer.log_run(
+            niche="Business Coach",
+            city="New York City",
+            pages=10,
+            phase1_found=15,
+            phase2_passed=5,
+            phase3_active=1,
+            phase4_qualified=0,
+            new_leads_saved=0,
+            duplicates_skipped=0,
+            status="Failed",
+            notes="No qualified profiles after full filter (1 checked)",
+            estimated_cost=0.025,
+            timestamp_str="2026-08-28 23:15:00 UTC",
+        )
+
+        mock_ws.append_row.assert_called_once()
+        appended_row = mock_ws.append_row.call_args[0][0]
+        self.assertEqual(appended_row[0], "2026-08-28 23:15:00 UTC")
+        self.assertEqual(appended_row[1], "Business Coach")
+        self.assertEqual(appended_row[2], "New York City")
+        self.assertEqual(appended_row[3], 10)
+        self.assertEqual(appended_row[4], 15)
+        self.assertEqual(appended_row[5], 5)
+        self.assertEqual(appended_row[6], 1)
+        self.assertEqual(appended_row[7], 0)
+        self.assertEqual(appended_row[10], "Failed")
+        self.assertEqual(appended_row[11], "No qualified profiles after full filter (1 checked)")
+        self.assertEqual(appended_row[12], "$0.0250")
+
+    def test_log_error(self):
+        mock_ws = MagicMock()
+        self.writer._get_or_create_worksheet = MagicMock(return_value=mock_ws)
+
+        self.writer.log_error(
+            niche="Business Coach",
+            city="New York City",
+            failed_phase="Phase 4 (Profile Qualifier)",
+            error_message="No qualified profiles after full filter (1 checked)",
+            details="1 active profile checked, none satisfied full qualification rules.",
+            timestamp_str="2026-08-28 23:15:00 UTC",
+        )
+
+        mock_ws.append_row.assert_called_once()
+        appended_row = mock_ws.append_row.call_args[0][0]
+        self.assertEqual(appended_row[0], "2026-08-28 23:15:00 UTC")
+        self.assertEqual(appended_row[1], "Business Coach")
+        self.assertEqual(appended_row[2], "New York City")
+        self.assertEqual(appended_row[3], "Phase 4 (Profile Qualifier)")
+        self.assertEqual(appended_row[4], "No qualified profiles after full filter (1 checked)")
+        self.assertEqual(appended_row[5], "1 active profile checked, none satisfied full qualification rules.")
+
 
 if __name__ == "__main__":
     unittest.main()
