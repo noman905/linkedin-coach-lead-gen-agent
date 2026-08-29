@@ -8,6 +8,9 @@ Phase 2: Pre-filter (Local 0-cost keyword filtering on Google snippet)
 Phase 3: Posts Scraper (Checks activity within 14 days, $1.50/1k)
 Phase 4: Profile Scraper & Full Qualification ($4.00/1k)
 Phase 5: Google Sheets Writer (Deduplication and persistence)
+
+Includes robust Apify credit exhaustion detection that immediately halts
+all remaining jobs and sends a single alert notification.
 """
 
 import sys
@@ -24,6 +27,7 @@ from posts_checker import PostsChecker
 from linkedin_profile_scraper import LinkedInProfileScraper
 from linkedin_qualifier import LinkedInQualifier
 from sheets_writer_linkedin import LinkedInSheetsWriter
+from email_notifier import EmailNotifier
 
 # Load environment variables
 load_dotenv()
@@ -37,9 +41,6 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger("LinkedInAgent")
-
-
-from email_notifier import EmailNotifier
 
 
 class LinkedInPipelineRunner:
@@ -95,6 +96,37 @@ class LinkedInPipelineRunner:
         cost_p4 = phase4_profiles_scraped * 0.004
         return round(cost_p1 + cost_p3 + cost_p4, 4)
 
+    def _is_credit_exhaustion(self, e: Exception) -> bool:
+        """Detects if an error is due to Apify credit exhaustion."""
+        if isinstance(e, ApifyCreditsExhaustedError):
+            return True
+        err_msg = str(e).lower()
+        return "by launching this job you will exceed your remaining usage" in err_msg or "exceed your remaining usage" in err_msg
+
+    def _handle_credit_exhaustion(self, row_index: Optional[int], niche: str, city: str, phase_name: str) -> None:
+        """Handles credit exhaustion by updating the sheet, sending ONE email alert, and raising exception."""
+        remaining_credits = self.get_remaining_apify_credits() or 0.0
+        status_val = "Failed — Credits Exhausted"
+        notes_val = f"Apify credits too low to run. Remaining credit: ${remaining_credits:.2f}. Refills on 1st of next month."
+
+        logger.error(f"\n[CREDIT EXHAUSTION DETECTED in {phase_name}] {notes_val}")
+
+        if row_index:
+            try:
+                self.sheets_writer.update_control_row(row_index, status_val, notes_val)
+            except Exception as se:
+                logger.error(f"Failed to update Control row for credit exhaustion: {se}")
+
+        self.email_notifier.send_job_notification(
+            niche=niche,
+            city=city,
+            status=status_val,
+            failed_phase=phase_name,
+            error_message=notes_val,
+        )
+
+        raise ApifyCreditsExhaustedError(notes_val)
+
     def process_job(self, job: Dict[str, Any]) -> bool:
         """
         Processes a single Control Tab row through all 5 phases sequentially.
@@ -117,19 +149,10 @@ class LinkedInPipelineRunner:
                 city=city,
                 total_pages=pages,
             )
-        except ApifyCreditsExhaustedError:
-            logger.error("Apify credits exhausted during Phase 1.")
-            if row_index:
-                self.sheets_writer.update_control_row(row_index, "Failed (Credits Out)", "Apify credits exhausted")
-            self.email_notifier.send_job_notification(
-                niche=niche,
-                city=city,
-                status="Failed",
-                failed_phase="Phase 1 (Google Search)",
-                error_message="Apify credits exhausted.",
-            )
-            raise
         except Exception as e:
+            if self._is_credit_exhaustion(e):
+                self._handle_credit_exhaustion(row_index, niche, city, "Phase 1 (Google Search)")
+            
             err_msg = f"Phase 1 error: {e}"
             logger.error(err_msg)
             if row_index:
@@ -185,22 +208,10 @@ class LinkedInPipelineRunner:
         logger.info(">>> Phase 3: Checking recent activity (14-day threshold)...")
         try:
             active_leads = self.phase3_posts_checker.check_activity(filtered_urls)
-        except ApifyCreditsExhaustedError:
-            logger.error("Apify credits exhausted during Phase 3.")
-            if row_index:
-                self.sheets_writer.update_control_row(row_index, "Failed (Credits Out)", "Apify credits exhausted")
-            self.email_notifier.send_job_notification(
-                niche=niche,
-                city=city,
-                status="Failed",
-                phase1_found=len(discovered_leads),
-                phase2_removed=p2_stats.total_input - p2_stats.total_passed,
-                phase2_remaining=p2_stats.total_passed,
-                failed_phase="Phase 3 (Posts Activity Check)",
-                error_message="Apify credits exhausted.",
-            )
-            raise
         except Exception as e:
+            if self._is_credit_exhaustion(e):
+                self._handle_credit_exhaustion(row_index, niche, city, "Phase 3 (Posts Activity Check)")
+
             err_msg = f"Phase 3 error: {e}"
             logger.error(err_msg)
             if row_index:
@@ -241,24 +252,10 @@ class LinkedInPipelineRunner:
         logger.info(">>> Phase 4: Scraping full profile data and running qualification...")
         try:
             qualified_leads, p4_stats = self.phase4_profile_scraper.scrape_and_qualify(active_leads)
-        except ApifyCreditsExhaustedError:
-            logger.error("Apify credits exhausted during Phase 4.")
-            if row_index:
-                self.sheets_writer.update_control_row(row_index, "Failed (Credits Out)", "Apify credits exhausted")
-            self.email_notifier.send_job_notification(
-                niche=niche,
-                city=city,
-                status="Failed",
-                phase1_found=len(discovered_leads),
-                phase2_removed=p2_stats.total_input - p2_stats.total_passed,
-                phase2_remaining=p2_stats.total_passed,
-                phase3_inactive_removed=len(filtered_urls) - len(active_leads),
-                phase3_remaining=len(active_leads),
-                failed_phase="Phase 4 (Profile Scraper)",
-                error_message="Apify credits exhausted.",
-            )
-            raise
         except Exception as e:
+            if self._is_credit_exhaustion(e):
+                self._handle_credit_exhaustion(row_index, niche, city, "Phase 4 (Profile Scraper)")
+
             err_msg = f"Phase 4 error: {e}"
             logger.error(err_msg)
             if row_index:
@@ -394,14 +391,15 @@ class LinkedInPipelineRunner:
             logger.info(f"\nProcessing job {idx}/{len(pending_jobs)}: {job.get('niche')} in {job.get('city')}...")
             try:
                 self.process_job(job)
-            except ApifyCreditsExhaustedError:
-                logger.error("Stopping remaining jobs immediately due to Apify credit exhaustion.")
-                break
+            except ApifyCreditsExhaustedError as ce:
+                logger.error(f"\n{'!'*70}\nSTOPPING PIPELINE IMMEDIATELY: {ce}\n{'!'*70}")
+                logger.error("Halted all remaining jobs to avoid repeated failures and email spam.")
+                break  # Immediately stop processing all remaining rows
             except Exception as e:
                 logger.error(f"Unexpected error processing job {job}: {e}")
-                # Continue with next job
+                # Continue with next job for regular non-credit errors
 
-        logger.info("All pending jobs processed.")
+        logger.info("Pipeline execution cycle completed.")
 
 
 if __name__ == "__main__":
@@ -421,7 +419,10 @@ if __name__ == "__main__":
             "city": args.city,
             "pages": args.pages,
         }
-        runner.process_job(adhoc_job)
+        try:
+            runner.process_job(adhoc_job)
+        except ApifyCreditsExhaustedError:
+            logger.error("Ad-hoc job stopped due to Apify credit exhaustion.")
     else:
         # Default: Process from Control Tab
         runner.run()
