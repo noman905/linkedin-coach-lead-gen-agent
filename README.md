@@ -53,7 +53,7 @@ The agent writes verified leads across these columns:
 
 ## Setting Up GitHub Actions & Secrets
 
-The agent runs automatically every day at **9:00 PM Pakistan Time (4:00 PM UTC)** via GitHub Actions, and can also be triggered manually anytime.
+The agent runs automatically every day at **6:00 PM Pakistan Time (1:00 PM UTC)** via GitHub Actions, and can also be triggered manually anytime.
 
 ### Step 1: Add GitHub Repository Secrets
 1. Go to your GitHub Repository -> **Settings** -> **Secrets and variables** -> **Actions**.
