@@ -170,9 +170,9 @@ Detailed error and filter drop-out diagnostics log:
 - **Batch Size**: Never send more than 50 URLs in a single call for Phase 3 or Phase 4.
 - **Batch Delays**: 30-second delay between batch calls.
 - **Credits Exhaustion**: Catch `"By launching this job you will exceed your remaining usage"` error, mark current row as `Failed (Credits Out)`, and cleanly stop remaining runs.
-- **Phase Failures**:
+- **Phase Completion & Zero-Result Handling**:
   - Phase 1 (0 results) -> Mark `Failed` ("Google returned 0 results").
   - Phase 2 (all filtered) -> Mark `Failed` ("All profiles removed in pre-filter").
   - Phase 3 (0 active) -> Mark `Failed` ("No active profiles found").
-  - Phase 4 (0 qualified) -> Mark `Failed` ("No qualified profiles after full filter").
+  - Phase 4 (0 qualified) -> Mark `Done` ("No qualified profiles after full filter").
   - Phase 5 (all duplicates) -> Mark `Done` ("All leads already exist in sheet").

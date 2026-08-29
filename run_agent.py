@@ -397,16 +397,17 @@ class LinkedInPipelineRunner:
 
         if not qualified_leads:
             msg = f"No qualified profiles after full filter ({p4_stats.total_input} checked)"
-            logger.warning(msg)
-            if row_index:
-                self.sheets_writer.update_control_row(row_index, "Failed", msg)
-            self.sheets_writer.log_error(
-                niche=niche,
-                city=city,
-                failed_phase="Phase 4 (Profile Qualifier)",
-                error_message=msg,
-                details=f"{p4_stats.total_input} active profile(s) checked, none satisfied full qualification rules (followers, gender, client service, or openToWork).",
+            logger.info(msg)
+            estimated_cost = self.calculate_estimated_cost(
+                phase1_pages=pages,
+                phase3_profiles_checked=len(filtered_urls),
+                phase4_profiles_scraped=len(active_leads),
             )
+            remaining_credits = self.get_remaining_apify_credits()
+
+            if row_index:
+                self.sheets_writer.update_control_row(row_index, "Done", msg)
+
             self.sheets_writer.log_run(
                 niche=niche,
                 city=city,
@@ -415,24 +416,42 @@ class LinkedInPipelineRunner:
                 phase2_passed=p2_stats.total_passed,
                 phase3_active=len(active_leads),
                 phase4_qualified=0,
-                status="Failed",
+                new_leads_saved=0,
+                duplicates_skipped=0,
+                status="Done",
                 notes=msg,
-                estimated_cost=self.calculate_estimated_cost(pages, len(filtered_urls), len(active_leads)),
+                estimated_cost=estimated_cost,
             )
+
+            # Log complete pipeline run summary
+            logger.info(f"\n{'-'*60}")
+            logger.info(f"PIPELINE RUN SUMMARY FOR: {niche} in {city}")
+            logger.info(f"  Phase 1 \u2014 Google Search:  {len(discovered_leads)} URLs found")
+            logger.info(f"  Phase 2 \u2014 Pre-filter:     {p2_stats.total_input - p2_stats.total_passed} removed, {p2_stats.total_passed} remaining")
+            logger.info(f"  Phase 3 \u2014 Posts Check:    {len(filtered_urls) - len(active_leads)} inactive removed, {len(active_leads)} remaining")
+            logger.info(f"  Phase 4 \u2014 Profile Scraper:{p4_stats.total_input} removed by filter, 0 qualified")
+            logger.info(f"  Phase 5 \u2014 Sheets:         0 new leads saved (0 duplicates skipped)")
+            logger.info(f"  Credits used this run:    approximately ${estimated_cost:.2f}")
+            logger.info(f"  Control Tab row:          Done")
+            logger.info(f"{'-'*60}\n")
+
             self.email_notifier.send_job_notification(
                 niche=niche,
                 city=city,
-                status="Failed",
+                status="Done",
                 phase1_found=len(discovered_leads),
                 phase2_removed=p2_stats.total_input - p2_stats.total_passed,
                 phase2_remaining=p2_stats.total_passed,
                 phase3_inactive_removed=len(filtered_urls) - len(active_leads),
                 phase3_remaining=len(active_leads),
                 phase4_unqualified_removed=p4_stats.total_input,
-                failed_phase="Phase 4 (Profile Qualifier)",
-                error_message=msg,
+                phase4_qualified=0,
+                new_leads_saved=0,
+                duplicates_skipped=0,
+                estimated_credits_usd=estimated_cost,
+                remaining_credits_usd=remaining_credits,
             )
-            return False
+            return True
 
         # -------------------------------------------------------------
         # Phase 5: Google Sheets Writer

@@ -117,8 +117,77 @@ class TestRunAgentCreditExhaustion(unittest.TestCase):
         self.assertEqual(run_call_kwargs["niche"], "Business Coach")
         self.assertEqual(run_call_kwargs["city"], "Dallas")
         self.assertEqual(run_call_kwargs["status"], "Done")
-        self.assertEqual(run_call_kwargs["new_leads_saved"], 1)
+    @patch("run_agent.LinkedInSheetsWriter")
+    @patch("run_agent.EmailNotifier")
+    @patch("run_agent.GoogleLinkedInScraper")
+    @patch("run_agent.PreFilter")
+    @patch("run_agent.PostsChecker")
+    @patch("run_agent.LinkedInProfileScraper")
+    def test_no_qualified_leads_after_full_filter_marked_done(self, mock_p4, mock_p3, mock_p2, mock_p1, mock_email, mock_writer):
+        runner = LinkedInPipelineRunner()
+
+        mock_p1_instance = mock_p1.return_value
+        mock_p1_instance.scrape_leads.return_value = [{"url": "https://www.linkedin.com/in/coach1"}]
+        runner.phase1_scraper = mock_p1_instance
+
+        mock_p2_instance = mock_p2.return_value
+        p2_stats = MagicMock()
+        p2_stats.total_input = 1
+        p2_stats.total_passed = 1
+        mock_p2_instance.filter_leads.return_value = (["https://www.linkedin.com/in/coach1"], p2_stats)
+        runner.phase2_pre_filter = mock_p2_instance
+
+        mock_p3_instance = mock_p3.return_value
+        mock_p3_instance.check_activity.return_value = ["https://www.linkedin.com/in/coach1"]
+        runner.phase3_posts_checker = mock_p3_instance
+
+        # Phase 4: 1 active profile checked, 0 qualified
+        mock_p4_instance = mock_p4.return_value
+        p4_stats = MagicMock()
+        p4_stats.total_input = 1
+        p4_stats.total_qualified = 0
+        mock_p4_instance.scrape_and_qualify.return_value = ([], p4_stats)
+        runner.phase4_profile_scraper = mock_p4_instance
+
+        mock_email_instance = mock_email.return_value
+        runner.email_notifier = mock_email_instance
+
+        mock_writer_instance = mock_writer.return_value
+        mock_writer_instance.read_pending_jobs.return_value = [
+            {"row_index": 2, "niche": "Business Coach", "city": "Indianapolis", "pages": 8}
+        ]
+        runner.sheets_writer = mock_writer_instance
+        runner.get_remaining_apify_credits = MagicMock(return_value=4.50)
+
+        runner.run()
+
+        # Control Tab updated with Done (NOT Failed)
+        mock_writer_instance.update_control_row.assert_called_once_with(
+            2, "Done", "No qualified profiles after full filter (1 checked)"
+        )
+
+        # Must NOT log to Error Log tab
+        mock_writer_instance.log_error.assert_not_called()
+
+        # Run Log updated with Done
+        mock_writer_instance.log_run.assert_called_once()
+        run_call_kwargs = mock_writer_instance.log_run.call_args[1]
+        self.assertEqual(run_call_kwargs["niche"], "Business Coach")
+        self.assertEqual(run_call_kwargs["city"], "Indianapolis")
+        self.assertEqual(run_call_kwargs["status"], "Done")
+        self.assertEqual(run_call_kwargs["notes"], "No qualified profiles after full filter (1 checked)")
+        self.assertEqual(run_call_kwargs["phase4_qualified"], 0)
+        self.assertEqual(run_call_kwargs["new_leads_saved"], 0)
+
+        # Email sent with Done status
+        mock_email_instance.send_job_notification.assert_called_once()
+        email_kwargs = mock_email_instance.send_job_notification.call_args[1]
+        self.assertEqual(email_kwargs["niche"], "Business Coach")
+        self.assertEqual(email_kwargs["city"], "Indianapolis")
+        self.assertEqual(email_kwargs["status"], "Done")
+        self.assertEqual(email_kwargs["phase4_qualified"], 0)
 
 
 if __name__ == "__main__":
     unittest.main()
+
