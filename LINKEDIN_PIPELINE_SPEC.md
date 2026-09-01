@@ -33,7 +33,7 @@ A 5-phase lead generation pipeline that replaces single-actor LinkedIn search wi
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │ Phase 3: Posts Scraper / Activity Check ($1.50 / 1k profiles)                   │
 │ Actor: harvestapi/linkedin-profile-posts                                        │
-│ • maxPosts: 5, postedLimit: month, no reactions/comments                        │
+│ • maxPosts: 8, postedLimit: month, no reactions/comments                        │
 │ • Activity Rule: Must have at least 1 post within the last 14 days              │
 │ • Batch size: ≤ 50 URLs with 30s delay between batches                          │
 │ • Removes inactive / dormant / private profiles                                 │
@@ -132,7 +132,7 @@ Detailed error and filter drop-out diagnostics log:
 
 ### Phase 3: Posts Scraper (Activity Check)
 - **Actor**: `harvestapi/linkedin-profile-posts`
-- **Settings**: `maxPosts: 5`, `postedLimit: "month"`, `scrapeReactions: false`, `scrapeComments: false`.
+- **Settings**: `maxPosts: 8`, `postedLimit: "month"`, `scrapeReactions: false`, `scrapeComments: false`.
 - **Rule**: Check `postedAt.date`. Keep only if at least 1 post is within the last 14 days.
 - **Batching**: Max 50 URLs per actor call with 30s pause between batches.
 

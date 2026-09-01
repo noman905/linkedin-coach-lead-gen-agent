@@ -138,7 +138,7 @@ class PostsChecker:
         1. Takes filtered profile URLs.
         2. Batches them in chunks of <= 50.
         3. Calls harvestapi/linkedin-profile-posts with:
-           - maxPosts: 5
+           - maxPosts: 8
            - postedLimit: "month"
            - scrapeReactions: false
            - scrapeComments: false
@@ -176,7 +176,7 @@ class PostsChecker:
 
             run_input = {
                 "targetUrls": batch_urls,
-                "maxPosts": 5,
+                "maxPosts": 8,
                 "postedLimit": "month",
                 "scrapeReactions": False,
                 "scrapeComments": False,
