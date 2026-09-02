@@ -156,7 +156,7 @@ class LinkedInProfileScraper:
             # harvestapi accepts both targetUrls and urls keys
             run_input = {
                 "targetUrls": batch_urls,
-                "urls": batch_urls,
+                "urls": [{"url": u} for u in batch_urls],
             }
 
             try:
