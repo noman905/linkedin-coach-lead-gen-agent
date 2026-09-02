@@ -162,6 +162,12 @@ class LinkedInPipelineRunner:
 
         logger.info(f"\n{'='*70}\n[STARTING JOB] Row {row_index}: Niche='{niche}' | City='{city}' | Pages={pages}\n{'='*70}")
 
+        if row_index:
+            try:
+                self.sheets_writer.update_control_row(row_index, "Running", "Pipeline is currently executing...")
+            except Exception as e:
+                logger.warning(f"Failed to set status to Running for row {row_index}: {e}")
+
         # -------------------------------------------------------------
         # Phase 1: Google Search Discovery
         # -------------------------------------------------------------
