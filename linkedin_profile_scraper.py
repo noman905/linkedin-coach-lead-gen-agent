@@ -153,10 +153,9 @@ class LinkedInProfileScraper:
             batch_urls = target_urls[i : i + self.batch_size]
             logger.info(f"  Calling {self.actor_id} (Batch {batch_num}/{total_batches}, {len(batch_urls)} URLs)...")
 
-            # harvestapi accepts both targetUrls and urls keys
+            # harvestapi expects 'urls' as an array of string URLs
             run_input = {
-                "targetUrls": batch_urls,
-                "urls": [{"url": u} for u in batch_urls],
+                "urls": batch_urls,
             }
 
             try:
