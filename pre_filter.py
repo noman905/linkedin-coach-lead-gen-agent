@@ -40,26 +40,7 @@ FEMALE_NAMES = {
     "cheryl", "natalie", "alexis", "aisha", "fatima", "priya", "neha", "pooja",
     "nisha", "anjali", "divya", "shreya", "meera", "sonia", "sonya", "kavya",
     "ananya", "zara", "layla", "nour", "hana", "yuki", "sakura", "min", "wei",
-    "ling", "hui",
-    # Additional common female names and diminutives
-    "beth", "betsy", "alicia", "alison", "allison", "audrey", "bonnie", "brooke",
-    "carla", "carolyn", "carrie", "chloe", "claire", "claudia", "connie", "dana",
-    "dawn", "deanna", "denise", "diane", "doris", "eileen", "elaine", "eleanor",
-    "ellen", "erica", "erika", "eva", "evelyn", "fara", "farah", "farrah", "gail", "gayle", "gina", "glenda",
-    "gwen", "hazel", "heidi", "helen", "holly", "irene", "jacqueline", "jane",
-    "janice", "jean", "jeanne", "jeannie", "jenna", "jenny", "jill", "joan",
-    "joann", "joanne", "joy", "judith", "judy", "karla", "kay", "kelli", "kelly",
-    "kim", "kimberly", "kirsten", "kristen", "kristin", "kristina", "kristy",
-    "laura", "laurie", "leah", "lori", "lorraine", "lucy", "lydia", "lynn",
-    "lynne", "mandy", "marcia", "marlene", "mary", "maureen", "meg", "meghan",
-    "melanie", "mindy", "monica", "nadia", "naomi", "natalia", "nellie", "nina",
-    "norma", "paige", "pam", "pamela", "paula", "pauline", "peggy", "penny",
-    "phyllis", "priscilla", "regina", "renee", "rhonda", "rita", "robin", "robyn",
-    "roberta", "rosalie", "rosemary", "roxanne", "sally", "sandy", "sheila",
-    "sherri", "sherry", "sheryl", "stacey", "stacy", "stefanie", "stella",
-    "sue", "susie", "suzanne", "sylvia", "tamara", "tami", "tammy", "tanya",
-    "tara", "teresa", "terri", "tina", "tonya", "tracy", "tracey", "trisha",
-    "valerie", "veronica", "violet", "wanda", "wendy", "whitney", "wilma", "yvonne", "zoe"
+    "ling", "hui"
 }
 
 # Keywords indicating profiles targeting women
